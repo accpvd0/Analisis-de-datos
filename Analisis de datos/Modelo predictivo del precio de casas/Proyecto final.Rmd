@@ -1,0 +1,270 @@
+```{r}
+library(tidyverse)
+library(corrplot)
+library(ggcorrplot)
+library(pls)
+library(flextable)
+library(visdat)
+library(vtable)
+library(ggplot2)
+library(ggpubr)
+library(factoextra)
+library(gridExtra)
+library(dlookr)
+library(inspectdf)
+library(funModeling)
+library(GGally)
+library(rlist)
+library(qqplotr)
+library(psych)
+library(dplyr)
+library(neuralnet)
+library(caret)
+library(readxl)
+library(dplyr)
+library(Metrics)
+```
+
+```{r}
+casas <- read_excel("Casas.xlsx")
+Casas <- as.data.frame(casas)
+
+```
+
+```{r}
+#tratamos la data que no tiene valores
+
+Casas[Casas==0]<-NA
+CasasSinNA<-na.omit(Casas)
+
+```
+
+```{r}
+#Reemplazamos las comunas por numeros
+dNumerica <- CasasSinNA %>%
+  mutate(comunaNum = case_when(
+    Comuna == 'QuintaNormal' ~ 0,
+    Comuna == 'PedroAguirreCerda' ~ 1,
+    Comuna == 'EstaciónCentral' ~ 2,
+    Comuna == 'Colina' ~ 3,
+    Comuna == 'LaFlorida' ~ 4,
+    Comuna == 'Maipú' ~ 5,
+    Comuna == 'SanBernardo' ~ 6,
+    Comuna == 'Santiago' ~ 7,
+    Comuna == 'PuenteAlto' ~ 8,
+    Comuna == 'LasCondes' ~ 9,
+    Comuna == 'Lampa' ~ 10,
+    Comuna == 'Quilicura' ~ 11,
+    Comuna == 'LaPintana' ~ 12,
+    Comuna == 'Renca' ~ 13,
+    Comuna == 'Huechuraba' ~ 14,
+    Comuna == 'SanMiguel' ~ 15,
+    Comuna == 'Ñuñoa' ~ 16,
+    Comuna == 'LaGranja' ~ 17,
+    Comuna == 'Pudahuel' ~ 18,
+    Comuna == 'Independencia' ~ 19,
+    Comuna == 'Buin' ~ 20,
+    Comuna == 'Peñalolén' ~ 21,
+    Comuna == 'Talagante' ~ 22,
+    Comuna == 'PadreHurtado' ~ 23,
+    Comuna == 'Tiltil' ~ 24,
+    Comuna == 'LoBarnechea' ~ 25,
+    Comuna == 'Conchalí' ~ 26,
+    Comuna == 'Providencia' ~ 27,
+    Comuna == 'LaReina' ~ 28,
+    Comuna == 'Recoleta' ~ 29,
+    Comuna == 'Peñaflor' ~ 30,
+    Comuna == 'ElMonte' ~ 31,
+    Comuna == 'Macul' ~ 32,
+    Comuna == 'CaleradeTango' ~ 33,
+    Comuna == 'Paine' ~ 34,
+    Comuna == 'LaCisterna' ~ 35,
+    Comuna == 'Melipilla' ~ 36,
+    Comuna == 'ElBosque' ~ 37,
+    Comuna == 'SanRamón' ~ 38,
+    Comuna == 'LoPrado' ~ 39,
+    Comuna == 'Vitacura' ~ 40,
+    Comuna == 'LoEspejo' ~ 41,
+    Comuna == 'Cerrillos' ~ 42,
+    Comuna == 'Curacaví' ~ 43,
+    Comuna == 'Pirque' ~ 44,
+    Comuna == 'SanJoaquín' ~ 45,
+    Comuna == 'IsladeMaipo' ~ 46,
+    Comuna == 'CerroNavia' ~ 47,
+    Comuna == 'SanJosédeMaipo' ~ 48,
+    Comuna == 'MaríaPinto' ~ 49,
+    Comuna == 'SanPedro' ~ 50,
+  )) %>%
+  select(-Comuna)
+```
+
+```{r}
+num_na_df <- sum(is.na(dNumerica))
+print(num_na_df)
+```
+
+```{r}
+DataFinal<-subset(dNumerica,select=-c(Price_CLP,Price_USD,Ubicacion,Realtor,id))
+
+```
+
+```{r}
+summary(DataFinal)
+```
+
+```{r}
+set.seed(3)
+
+#hacemos la particion 80% y 20%, que ocuparemos para esta parte del trabajo
+
+select<- sample(1:nrow(DataFinal),round(0.8*nrow(DataFinal)))
+dat.train <-DataFinal[select,]
+dat.test <-DataFinal[-select,]
+
+```
+
+```{r}
+#Modelo de regresion lineal multiple
+  
+Model = lm(Price_UF ~ Dorms + Baths + Built_Area + Total_Area + Parking + comunaNum, data = DataFinal)
+
+summary(Model)
+```
+```{r}
+Modeltrain = lm(Price_UF ~ Dorms + Baths + Built_Area + Total_Area + Parking + comunaNum, data = dat.train)
+Modeltest = lm(Price_UF ~ Dorms + Baths + Built_Area + Total_Area + Parking + comunaNum, data = dat.test)
+
+summary(Modeltrain)
+summary(Modeltest)
+
+```
+
+
+
+
+```{r}
+#Modelo de regresion lineal multiple con data de train
+  
+x = model.matrix(Price_UF ~ Dorms + Baths + Built_Area + Total_Area + Parking + comunaNum, data = dat.train)
+x[1:10, ]
+
+
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+data_R <- dat.train[complete.cases(dat.train), ]
+
+data_R <- data_R %>% select_if(is.numeric)
+
+dfNorm <- as.data.frame(lapply(data_R, normalize))
+
+#seleccionar datos de entrenamiento y prueba
+
+n = nrow(dat.train)
+smp_size <- floor(0.8 * n) # 
+set.seed(100) 
+index<- sample(seq_len(n),size = smp_size)
+dtrain <- dfNorm[index,]
+dtest <- dfNorm[-index,]
+
+head(dtrain)
+
+mod_nn4=neuralnet(Price_UF~.,data=dtrain, hidden=c(7,5),
+             linear.output = TRUE,threshold = 0.01 ,stepmax = 1e5)
+
+plot(mod_nn4)
+
+
+
+```
+
+```{r}
+
+Pred_ej1=neuralnet::compute(mod_nn4,dtrain)
+Pred_ej1$net.result
+
+```
+```{r}
+Resultados_train <- data.frame(net_result = Pred_ej1$net.result)
+Resultados_train$uf_real <- dtrain$Price_UF
+```
+```{r}
+head(Resultados_train,20)
+
+```
+
+
+```{r}
+#Modelo de regresion lineal multiple con data de test
+  
+x = model.matrix(Price_UF ~ Dorms + Baths + Built_Area + Total_Area + Parking + comunaNum, data = dat.test)
+x[1:10, ]
+
+
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+data_R <- dat.test[complete.cases(dat.test), ]
+
+data_R <- data_R %>% select_if(is.numeric)
+
+dfNorm <- as.data.frame(lapply(data_R, normalize))
+
+#seleccionar datos de entrenamiento y prueba
+
+n = nrow(dat.test)
+smp_size <- floor(0.8 * n) # 
+set.seed(100) 
+index<- sample(seq_len(n),size = smp_size)
+dtrain <- dfNorm[index,]
+dtest <- dfNorm[-index,]
+
+head(dtrain)
+
+mod_nn4=neuralnet(Price_UF~.,data=dtest, hidden=c(5,3),
+             linear.output = TRUE,threshold =  0.001)
+
+plot(mod_nn4)
+```
+```{r}
+Pred_ej2=neuralnet::compute(mod_nn4,dtest)
+Pred_ej2$net.result
+
+```
+
+```{r}
+Resultados_test <- data.frame(net_result = Pred_ej2$net.result)
+Resultados_test$uf_real <- dtest$Price_UF
+```
+
+```{r}
+head(Resultados_test,20)
+```
+
+```{r}
+# Predicciones y valores reales normalizados
+predictions <- Pred_ej2$net.result
+actuals <- dtest$Price_UF
+
+# Error Cuadrático Medio (MSE)
+mse <- mse(actuals, predictions)
+print(paste("MSE:", mse))
+
+# Raíz del Error Cuadrático Medio (RMSE)
+rmse <- rmse(actuals, predictions)
+print(paste("RMSE:", rmse))
+
+# Error Absoluto Medio (MAE)
+mae <- mae(actuals, predictions)
+print(paste("MAE:", mae))
+
+#Rcuadrado
+rss <- sum((predictions - actuals) ^ 2)
+tss <- sum((actuals - mean(actuals)) ^ 2)
+r_squared <- 1 - (rss / tss)
+print(paste("R²:", r_squared))
+
+```
+

@@ -1,0 +1,453 @@
+---
+title: "Untitled"
+output: html_document
+date: "2022-11-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+library(tidyverse)
+library(corrplot)
+library(ggcorrplot)
+library(pls)
+library(flextable)
+library(visdat)
+library(vtable)
+library(ggplot2)
+library(ggpubr)
+library(factoextra)
+library(gridExtra)
+library(dlookr)
+library(inspectdf)
+library(funModeling)
+library(GGally)
+library(rlist)
+library(qqplotr)
+library(psych)
+library(dplyr)
+library(neuralnet)
+library(caret)
+
+```
+
+```{r}
+#leer csv
+
+diamantes <- read_csv("diamantes.csv")
+
+##Cambiamos valores 0 por NA
+
+diamantes[diamantes==0]<-NA
+diamantes<-na.omit(diamantes)
+
+## Limpiamos los valores de outliers
+carat_at<-boxplot.stats(diamantes$carat)$out
+depth_at<-boxplot.stats(diamantes$depth)$out
+table_at<-boxplot.stats(diamantes$table)$out
+price_at<-boxplot.stats(diamantes$price)$out
+x_at<-boxplot.stats(diamantes$x)$out
+y_at<-boxplot.stats(diamantes$y)$out
+z_at<-boxplot.stats(diamantes$z)$out
+out_carat<-which(diamantes$carat %in% c(carat_at))
+out_depth<-which(diamantes$depth %in% c(depth_at))
+out_table<-which(diamantes$table %in% c(table_at))
+out_price<-which(diamantes$price %in% c(price_at))
+out_x<-which(diamantes$x %in% c(x_at))
+out_y<-which(diamantes$y %in% c(y_at))
+out_z<-which(diamantes$z %in% c(z_at))
+
+lista<-c(out_carat,out_depth)
+lista<-c(lista, out_table)
+lista<-c(lista,out_price)
+lista<-c(lista,out_x)
+lista<-c(lista,out_y)
+lista<-c(lista,out_z)
+
+```
+
+```{r}
+#añadimos una variable para luego poder reducir la dimension de la matriz
+diamantes$volume<-diamantes$x*diamantes$y*diamantes$z
+data<-diamantes[-lista,]
+```
+
+```{r}
+##Primero, como nuestros datos categoricos representan una escala, los transformamos a una escala numerica
+
+dNumerica <- data  %>% mutate(colorNum = ifelse(color == "D", 0, ifelse(color == "E", 1, ifelse(color == "F", 2, ifelse(color == "G", 3, ifelse(color == "H",4, ifelse(color == "I" , 5,6)))))), cutNum = ifelse(cut=="Fair", 0, ifelse(cut=="Good", 1, ifelse(cut == "Very Good", 2, ifelse(cut=="Premium", 3, 4)))), clarityNum = ifelse(clarity == "I1", 0, ifelse(clarity == "SI2", 1, ifelse(clarity == "SI1",2, ifelse(clarity=="VS2", 3, ifelse(clarity=="VS1",4, ifelse(clarity=="VVS2",5,ifelse(clarity == "VVS1", 6, 7)))))))) %>% select(-cut,-color,-clarity)
+
+
+summary(dNumerica)
+
+```
+
+```{r}
+#eliminamos x,y,z
+
+data<-subset(dNumerica,select=-c(x,y,z))
+
+```
+
+```{r}
+#como tenemos tantos datos (47mil), vamos a trabajar con al rededor de 6 mil
+  
+set.seed(3)
+
+data <- data[sample(1:nrow(data),5000), ]
+
+#hacemos la particion 80% y 20%, que ocuparemos para esta parte del trabajo
+
+select<- sample(1:nrow(data),round(0.8*nrow(data)))
+dat.train <-data[select,]
+dat.test <-data[-select,]
+
+```
+
+```{r}
+#Modelo de regresion lineal multiple
+  
+x = model.matrix(price ~ carat + depth + table + volume, data = data)
+x[1:10, ]
+
+y = data$price
+
+b= solve(t(x) %*% x) %*% t(x) %*% y
+
+yhat = x %*% b
+residuals = y - yhat
+
+#AnÃlisis de residuales
+
+par(mfrow = c(2,2))
+
+#Normalidad
+
+plot(density(residuals), col = 'red', main = 'Desityplot de residuales')
+polygon(density(residuals), col="red")
+
+qqnorm(residuals)
+qqline(residuals, col = 'red')
+
+#Varianza Constante
+
+plot(residuals, main = 'Constant Variance')
+
+#Residuales independientes
+
+acf(residuals)
+```
+
+```{r}
+#Normalizacion de datos
+
+m.log = lm(log(price) ~ log(carat) + log(depth) + log(table) + cutNum + colorNum + clarityNum + volume,
+              data = data)
+
+```
+
+```{r}
+
+summary(m.log)
+
+```
+
+```{r}
+#Eliminamos log depth y log table ya que supera el 0.05
+  
+data<-subset(data,select=-c(table))
+data<-subset(data,select=-c(depth))
+
+
+
+```
+
+```{r}
+#volvemos a ver el modelo de regresion lineal multiple y final con el 80% de los datos
+
+m.log = lm(log(price) ~ log(carat) + cutNum + colorNum + clarityNum + volume,
+             data = dat.train)
+  
+#Analyis de residuales
+  
+par(mfrow = c(2,2))
+residuals1 = m.log$residuals
+
+#Normalidad
+plot(density(residuals1), col = 'red', main = 'Desityplot de residuales')  # density plot for 'speed'
+polygon(density(residuals1), col="red")
+
+qqnorm(residuals1)
+qqline(residuals1, col = 'red')
+
+#Varianza Constante
+plot(residuals1, main = 'Constant Variance', type = 'l')
+
+#Residuales independientes
+acf(residuals1)
+
+summary(m.log)
+
+predict <- predict(m.log, dat.train)
+MSE.lm <- mean((predict - dat.train$price)^2)
+MSE.lm
+sqrt(MSE.lm)
+
+
+#bias
+mean(predict - dat.train$price)
+corlm <- cor(predict, dat.train$price)
+plot(predict, dat.train$price)
+abline(lm(dat.train$price~predict),col="red")
+
+#escalar los datos
+
+maxs <- apply(data,2,max)
+min <- apply(data,2,min)
+
+scaled <- as.data.frame(scale(data,center = min, scale = maxs - min))
+dtrain.scal <- scaled[select,]
+dtest.scal <- scaled[-select,]
+
+
+#comparar algoritmos 
+control <- trainControl(method="cv", number=10)
+set.seed(7)
+
+```
+
+```{r}
+#red neuronal
+
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+data_R <- data[complete.cases(data), ]
+
+data_R <- data_R %>% select_if(is.numeric)
+
+dfNorm <- as.data.frame(lapply(data_R, normalize))
+
+#seleccionar datos de entrenamiento y prueba
+
+n = nrow(data)
+smp_size <- floor(0.8 * n) # 
+set.seed(46) 
+index<- sample(seq_len(n),size = smp_size)
+dtrain <- dfNorm[index,]
+dtest <- dfNorm[-index,]
+
+head(dtrain)
+
+mod_nn4=neuralnet(price~.,data=dtrain, hidden=c(7,3),
+             linear.output = TRUE,threshold = 0.01)
+
+plot(mod_nn4)
+
+```
+
+```{r}
+#arbol de decision
+
+set.seed(1)
+
+model <- train(
+  price ~ .,
+  data = data,
+  method = 'rpart2',
+  preProcess = c("center", "scale")
+)
+
+png(file = "decTreeGFG.png", width = 600,height = 600)
+
+# Plot
+plot(model, uniform = TRUE, main = "Decision Tree using Regression")
+
+# Saving the file
+dev.off()
+
+predict(model,data)
+print(model)
+
+model
+plot(model)
+
+```
+
+```{r}
+#knn
+
+set.seed(1)
+
+model <- train(
+  price ~ .,
+  data = data,
+  method = 'knn'
+  
+)
+
+model
+
+```
+
+```{r}
+#regresion lineal 80%
+
+st.time<-Sys.time()
+
+fitR.lm <- train(price~., data=dat.train, method="lm", metric="RMSE", trControl=control)
+
+end.time<-Sys.time()
+end.time-st.time
+
+```
+
+
+```{r}
+#Arbol de decision %80
+st.time<-Sys.time()
+
+fitR.dt <- train(price~., data=dat.train, method="rpart", metric="RMSE", trControl=control,na.action=na.omit,tuneLength=5)
+
+end.time<-Sys.time()
+end.time-st.time
+
+```
+
+```{r}
+#Redes neuronales 80%
+
+st.time<-Sys.time()
+
+fitR.nn <- train(price~., data=dat.train,
+                method = "nnet",metric="RMSE",trControl = control,linout=TRUE,
+                preProcess=c("scale","center"),na.action = na.omit,trace=F,maxit = 1000,tunelength=9)
+
+end.time<-Sys.time()
+end.time-st.time
+
+
+```
+
+
+```{r}
+#knn 80%
+
+st.time<-Sys.time()
+
+fitR.knn <- train(price~., data=dat.train, method="knn", metric="RMSE",
+                  linout=TRUE, preProcess=c("scale","center"), trControl=control,na.action=na.omit)
+
+end.time<-Sys.time()
+end.time-st.time
+
+
+```
+
+
+```{r}
+
+list_reg<-list(lm=fitR.lm,dt=fitR.dt, nn=fitR.nn,knn=fitR.knn)
+all_reg <- resamples(list_reg)
+summary(all_reg)
+dotplot(all_reg)
+
+```
+
+
+```{r}
+#regresion lineal 20%
+
+fitR.lm <- train(price~., data=dat.test, method="lm", metric="RMSE", trControl=control)
+
+predict <- predict(fitR.lm, dat.test)
+MSE.lm <- mean((predict - dat.test$price)^2)
+MSE.lm
+sqrt(MSE.lm)
+
+
+#bias
+mean(predict - dat.test$price)
+corlm <- cor(predict, dat.test$price)
+
+plot(predict, dat.test$price)
+abline(lm(dat.test$price~predict),col="red")
+
+
+```
+
+```{r}
+#Arbol de decision %20
+
+
+fitR.dt <- train(price~., data=dat.test, method="rpart", metric="RMSE", trControl=control,na.action=na.omit,tuneLength=5)
+
+predict <- predict(fitR.dt, dat.test)
+MSE.lm <- mean((predict - dat.test$price)^2)
+MSE.lm
+sqrt(MSE.lm)
+
+
+#bias
+mean(predict - dat.test$price)
+corlm <- cor(predict, dat.test$price)
+plot(predict, dat.test$price)
+abline(lm(dat.test$price~predict),col="red")
+
+
+```
+
+
+```{r}
+#Redes neuronales 20%
+
+##predicción
+
+Pred_ej4=neuralnet::compute(mod_nn4,dat.test)
+Pred_ej4$net.result
+
+
+
+```
+
+
+```{r}
+#knn 20%
+
+y_test = dat.test$price
+
+
+fitR.knn <- train(price~., data=dat.test, method="knn", metric="RMSE",
+                  linout=TRUE, preProcess=c("scale","center"), trControl=control,na.action=na.omit)
+
+
+
+##Predicción
+prednn<-predict(fitR.knn,dat.test)
+
+plot(y_test,prednn,pch=16)
+abline(0,1,lty=2,col=2,lwd=2)
+
+
+plot(y_test,type = "l",col="red")
+
+
+
+```
+
+
+```{r}
+rsquared.dt<-max(fitR.dt$results$Rsquared)
+rsquared.knn<-max(fitR.knn$results$Rsquared)
+rsquared.lm<-max(fitR.lm$results$Rsquared)
+rsquared.nn<-max(fitR.nn$results$Rsquared)
+lista.grafica<-c(rsquared.dt,rsquared.knn,rsquared.lm,rsquared.nn)
+etiquetas<-c("Decision Tree","K-NN","Linear Regression","Neural Network")
+M<-cbind(lista.grafica,etiquetas)
+barplot(lista.grafica,names.arg=etiquetas,xlab="Método",ylab="Best R^2",col="red",ylim=c(0.8,1),xpd=FALSE)
+M
+```

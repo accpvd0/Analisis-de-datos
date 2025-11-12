@@ -1,0 +1,314 @@
+```{r}
+#librerias
+
+library(readxl)
+library(visdat)
+library(dplyr)
+library(funModeling)
+library(ggplot2)
+library(inspectdf)
+library(mice)
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(caret)
+```
+
+
+
+```{r}
+#leer csv
+
+lluvia <- read_csv("weatherAUS.csv")
+View(lluvia)
+head(lluvia)
+
+```
+
+
+```{r}
+#ver la cantidad de na
+porcentaje=inspect_na(lluvia)
+show_plot(porcentaje)
+
+```
+
+```{r}
+#transformar una variable cuantitativa a numerica
+
+lluvia$RainToday<- ifelse(lluvia$RainToday   == "Yes", 1, 0)
+lluvia$RainTomorrow<- ifelse(lluvia$RainTomorrow   == "Yes", 1, 0)
+
+lluvia$WindGustDir  <- ifelse(lluvia$WindGustDir== "W", 1, ifelse(lluvia$WindGustDir == "SE", 2,  ifelse(lluvia$WindGustDir == "E", 3, ifelse(lluvia$WindGustDir == "N",4,ifelse(lluvia$WindGustDir=="SSE",5,ifelse(lluvia$WindGustDir=="S",6,ifelse(lluvia$WindGustDir=="WSW",7,ifelse(lluvia$WindGustDir=="SW",8,ifelse(lluvia$WindGustDir=="SSW",9,ifelse(lluvia$WindGustDir=="WNW",10,ifelse(lluvia$WindGustDir=="NW",11,ifelse(lluvia$WindGustDir=="ENE",12,ifelse(lluvia$WindGustDir == "ESE",13,ifelse(lluvia$WindGustDir=="NE", 14,ifelse(lluvia$WindGustDir=="NNW",15,16)))))))))))))))
+
+lluvia$WindDir9am  <- ifelse(lluvia$WindDir9am== "W", 1, ifelse(lluvia$WindDir9am == "SE", 2,  ifelse(lluvia$WindDir9am == "E", 3, ifelse(lluvia$WindDir9am == "N",4,ifelse(lluvia$WindDir9am=="SSE",5,ifelse(lluvia$WindDir9am=="S",6,ifelse(lluvia$WindDir9am=="WSW",7,ifelse(lluvia$WindDir9am=="SW",8,ifelse(lluvia$WindDir9am=="SSW",9,ifelse(lluvia$WindDir9am=="WNW",10,ifelse(lluvia$WindDir9am=="NW",11,ifelse(lluvia$WindDir9am=="ENE",12,ifelse(lluvia$WindDir9am == "ESE",13,ifelse(lluvia$WindDir9am=="NE", 14,ifelse(lluvia$WindDir9am=="NNW",15,16)))))))))))))))
+
+lluvia$WindDir3pm  <- ifelse(lluvia$WindDir3pm== "W", 1, ifelse(lluvia$WindDir3pm == "SE", 2,  ifelse(lluvia$WindDir3pm == "E", 3, ifelse(lluvia$WindDir3pm == "N",4,ifelse(lluvia$WindDir3pm=="SSE",5,ifelse(lluvia$WindDir3pm=="S",6,ifelse(lluvia$WindDir3pm=="WSW",7,ifelse(lluvia$WindDir3pm=="SW",8,ifelse(lluvia$WindDir3pm=="SSW",9,ifelse(lluvia$WindDir3pm=="WNW",10,ifelse(lluvia$WindDir3pm=="NW",11,ifelse(lluvia$WindDir3pm=="ENE",12,ifelse(lluvia$WindDir3pm == "ESE",13,ifelse(lluvia$WindDir3pm=="NE",14,ifelse(lluvia$WindDir3pm=="NNW",15,16)))))))))))))))
+
+```
+
+```{r}
+#lluvia$WindGustDir[is.na(lluvia$WindGustDir)] <- 0
+
+summary(lluvia)
+head(lluvia)
+
+str(lluvia)
+
+```
+
+```{r}
+#data sin na
+
+lluvia_sin_na<-na.omit(lluvia)
+head(lluvia_sin_na)
+
+summary(lluvia_sin_na)
+```
+
+
+```{r}
+#Matriz correlacion (Solo con variables numericas)
+mcor=cor(lluvia_sin_na %>% select_if(is.numeric))
+mcor
+```
+
+```{r}
+#Gráfico de correlación
+
+corrplot(mcor, method = "circle", type = "lower", tl.col = "black", tl.srt = 45)
+
+```
+
+```{r}
+#regresion lineal multiple
+
+modelolm <- lm(RISK_MM ~ MinTemp + MaxTemp+ Rainfall + Evaporation + Sunshine + WindGustDir +WindDir9am + WindDir3pm +WindSpeed9am +
+                WindSpeed3pm +Humidity9am + Humidity3pm + Pressure9am +Pressure3pm + Cloud9am + 
+                Cloud3pm + Temp9am + Temp3pm + RainToday + RainTomorrow -1, data = lluvia_sin_na)
+
+summary(modelolm)
+
+```
+
+```{r}
+#regresion lineal multiple 2 limpio
+
+modelolm2 <- lm(RISK_MM ~  MaxTemp+ Rainfall + Evaporation + Sunshine + WindGustDir +WindSpeed9am +
+                WindSpeed3pm + Humidity3pm + Pressure9am + Cloud3pm+RainToday + RainTomorrow -1, data = lluvia_sin_na)
+
+summary(modelolm2)
+```
+
+
+```{r}
+#regresion lineal multiple 3 limpio
+
+modelolm3 <- lm(RISK_MM ~  MaxTemp+ Rainfall + Sunshine +WindSpeed9am +
+                WindSpeed3pm + Humidity3pm + Pressure9am + Cloud3pm+RainToday + RainTomorrow - 1, data = lluvia_sin_na)
+
+summary(modelolm3)
+```
+
+
+
+```{r}
+#Particion de datos
+
+set.seed(123)
+indextrain = createDataPartition(lluvia_sin_na $RISK_MM,p=0.8,list=F)
+
+dat.train=lluvia_sin_na[indextrain,]
+dat.test=lluvia_sin_na[-indextrain,]
+```
+
+
+```{r}
+#regresion lineal con el 80% de los datos
+
+Modelo80train = lm(RISK_MM ~ MaxTemp + Rainfall + Sunshine +WindSpeed9am +
+                WindSpeed3pm + Humidity3pm + Pressure9am + Cloud3pm+RainToday + RainTomorrow- 1, data = dat.train)
+
+summary(Modelo80train)
+```
+
+```{r}
+#entrenamiento del modelo con el 80 de los datos
+
+prediccionestrain <- predict(Modelo80train, newdata = dat.train)
+
+print(prediccionestrain)
+
+plot(dat.train$RISK_MM, prediccionestrain, 
+     xlab = "RISK_MM vistos en la base de datos", ylab = "RISK_MM predecidos", 
+     main = "Predicciones vs. Valores Observados")
+     
+abline(0, 1, col = "red")
+
+
+
+```
+```{r}
+#prediccion 80 de los datos de RLM
+
+rmse <- sqrt(mean((prediccionestrain - dat.train$RISK_MM)^2))
+rmse
+
+```
+
+```{r}
+#modelo con el 20 de los datos
+Modelo20test = lm(RISK_MM ~ MinTemp + MaxTemp+ Rainfall + Evaporation + Sunshine + WindGustDir +WindDir9am +WindSpeed9am +
+                WindSpeed3pm + Humidity3pm + Pressure9am+ 
+                Cloud3pm+ Temp3pm + RainToday + RainTomorrow - 1 , data = dat.test)
+
+summary(Modelo20test)
+
+```
+
+```{r}
+#modelo con el 20 de los datos limpios
+Modelo20test = lm(RISK_MM ~ MinTemp + MaxTemp + Sunshine  
+                 + Humidity3pm + RainTomorrow - 1, data = dat.test)
+
+summary(Modelo20test)
+
+
+```
+
+```{r}
+#entrenamiento del modelo con el 20 de los datos
+
+prediccionestest <- predict(Modelo20test, newdata = dat.test)
+
+print(prediccionestest)
+
+plot(dat.test$RISK_MM, prediccionestest, 
+     xlab = "RISK_MM vistos en la base de datos", ylab = "RISK_MM predecidos", 
+     main = "Predicciones vs. Valores Observados")
+     
+abline(0, 1, col = "red")
+
+
+
+```
+```{r}
+#prediccion 20 de los datos de RLM
+
+rmse <- sqrt(mean((prediccionestest - dat.test$RISK_MM)^2))
+rmse
+
+
+```
+
+
+
+```{r}
+#---------------------------------------------------------------------------------------------------------------
+#Analisis de componentes principales
+
+
+
+# Seleccionar solo las variables numéricas
+lluvia_principal <- subset(lluvia_sin_na, select = -RainTomorrow)
+lluvia_PCA <- lluvia_principal[, sapply(lluvia_principal, is.numeric)]
+
+# Realizar el análisis de componentes principales
+resultado_pca <- prcomp(lluvia_PCA, center = TRUE) 
+
+#Mostrar el resumen del PCA
+summary(resultado_pca)
+resultado_pca
+
+plot(resultado_pca, type="l")
+
+```
+
+
+
+```{r}
+#tomamos el PC con una proporcion acumulada hasta el 80%
+
+resultado_pca$rotation[,1:3]
+
+lluvia_PCA$ValPC1 <- apply(resultado_pca$rotation[,1]*t(lluvia_PCA),2,sum)
+lluvia_PCA$ValPC2 <- apply(resultado_pca$rotation[,2]*t(lluvia_PCA),2,sum)
+lluvia_PCA$ValPC3 <- apply(resultado_pca$rotation[,3]*t(lluvia_PCA),2,sum)
+
+```
+
+```{r}
+
+write.csv2(lluvia_PCA,"weatherAUS2")
+```
+
+```{r}
+#modelo logistico
+
+lluvia_PCA$RainTomorrow <- lluvia_sin_na$RainTomorrow
+llueve_o_no <- glm(RainTomorrow ~ ValPC1 + ValPC2,"binomial", lluvia_PCA)
+summary(llueve_o_no)
+
+```
+```{r}
+#data de logist
+set.seed(1234)
+indextrain2 = createDataPartition(lluvia_PCA$RainTomorrow,p=0.8,list=F)
+
+dat2.train=lluvia_PCA[indextrain2,]
+dat2.test=lluvia_PCA[-indextrain2,]
+
+```
+
+```{r}
+
+pred_log <- predict(llueve_o_no, newdata = dat2.train, type = "response")
+plot(pred_log)
+
+```
+
+```{r}
+#Prediccion modelo logistico
+
+predict <- ifelse(pred_log > 0.5, 1, 0)
+matriz_confusion <- confusionMatrix(factor(predict), factor(dat2.train$RainTomorrow))
+
+exactitud <- matriz_confusion$overall["Accuracy"]
+
+```
+
+```{r}
+
+exactitud
+
+```
+
+```{r}
+
+Predictmañana <- sapply(predict, function(x) ifelse(x > 0.5, 1, 0))
+
+conteo_predicciones <- table(Predictmañana)
+
+porcentaje_predicciones <- conteo_predicciones / sum(conteo_predicciones) * 100
+
+print(porcentaje_predicciones)
+
+
+if (porcentaje_predicciones["0"] > porcentaje_predicciones["1"]) {
+  print(" Según el modelo, es más probable que mañana no lloverá.")
+} else {
+  print(" Según el modelo, es más probable que mañana sí lloverá.")
+}
+
+
+
+
+
+```
+
+
+
+
+
+
+
